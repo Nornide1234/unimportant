@@ -19,23 +19,40 @@ Response shape (`{success, message}`, plus `{sessionid}` for init) matches what 
 
 **Free tier caveat:** Render's free web services spin down after ~15 minutes of inactivity and take ~30-60s to wake back up on the next request - the first license check after a while idle will be slow. Upgrade to a paid instance (or ping it periodically to keep it warm) if that matters to you. Free Postgres instances on Render also get deleted after 90 days unless upgraded - export/back up your `licenses` table before then, or upgrade the database plan.
 
-## Deploying on Back4app Containers + Supabase (no credit card required)
+## Deploying on Vercel + Supabase (no credit card, stable URL - recommended if you can't use Render)
 
-Glitch shut down, so this replaces it as the no-card hosting option. Back4app Containers builds and runs the `Dockerfile` in this repo (added for this purpose) as a normal long-lived process - same `server.js`/`db.js` code as every other deployment path, nothing changes there. This path skips `render.yaml` entirely.
+Vercel's free Hobby plan needs no credit card and, unlike the containers-based options below, its project URL (`https://<project>.vercel.app`) is permanent from the first deploy - no "temporary URL" paywall to work around. The tradeoff: Vercel runs code as serverless functions, not a normal long-lived process, so this repo is structured to support both - `app.js` holds the actual Express app, `server.js` is the traditional entry point (`app.listen()`, used by Render/Docker/local dev), and `api/index.js` + `vercel.json` are the Vercel-specific entry point that route every request to the same `app.js` without ever calling `.listen()`. You don't need to touch any of that - just deploy.
 
-1. **Database - [supabase.com](https://supabase.com):** create a free account (no card), then a new project. Use the **Connect** button (see above) to get the connection string - prefer the **Session pooler** or **Transaction pooler** URI over the direct connection. It looks like `postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres`. Fill in the real database password.
-2. **Hosting - [back4app.com](https://back4app.com):** create a free account (no card) → **Containers** → new app → **Deploy from GitHub**, pick this repo. Back4app finds the `Dockerfile` automatically and builds/runs it.
-3. In the app's environment/config-variables settings, set:
+1. **Database - [supabase.com](https://supabase.com):** create a free account (no card), then a new project. Use the **Connect** button to get the connection string - prefer the **Session pooler** or **Transaction pooler** URI over the direct connection. It looks like `postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres`. Fill in the real database password.
+2. **Hosting - [vercel.com](https://vercel.com):** sign up with GitHub (no card) → **Add New → Project** → import this repo. Vercel auto-detects it as a Node project; you don't need to change the build/output settings it suggests.
+3. Before the first deploy (or after, then redeploy), add these under the project's **Settings → Environment Variables**:
    ```
    DATABASE_URL=<the Supabase connection string from step 1>
    ADMIN_USER=admin
    ADMIN_PASSWORD=<pick your own>
    ```
-   (`PORT` doesn't need to be set - the Dockerfile exposes 3000 and `server.js` already falls back to that when `PORT` isn't provided; Back4app maps its own port to whatever the container exposes.)
-4. Once deployed, Back4app gives you a URL for the app (shown on the app's dashboard page).
-5. Update `Mario/Client/Managers/KeyAuthManager/KeyAuthClient.h`'s `apiUrl()` to `https://<that-url>/api/1.3/` (see below).
+4. Deploy. Your permanent URL is shown on the project dashboard, e.g. `https://keyserver-yourname.vercel.app`.
+5. Update `Mario/Client/Managers/KeyAuthManager/KeyAuthClient.h`'s `apiUrl()` to `https://keyserver-yourname.vercel.app/api/1.3/` (see below).
 
-**Free tier caveat:** Back4app's free container tier is 0.25 shared CPU / 256MB RAM / 100GB transfer - plenty for a license server, but it may sleep/cold-start on inactivity similar to Render's free tier. Supabase's free project pauses after a week of no API activity - the first request after that wakes it back up within a minute or so.
+**Caveats:** each serverless invocation has a cold start (usually well under a second, longer after long idle periods) - noticeable but much less than Render/Back4app's free-tier sleep delay. Vercel's Hobby plan ToS restricts it to personal/non-commercial use - if this ever becomes a paid product, that's worth revisiting. Supabase's free project pauses after a week of no API activity - the first request after that wakes it back up within a minute or so.
+
+## Deploying on Back4app Containers + Supabase (no credit card, but read the URL caveat first)
+
+Back4app Containers builds and runs the `Dockerfile` in this repo as a normal long-lived process (same `server.js`/`db.js` code as Render). This path skips `render.yaml` entirely.
+
+**Important:** on the free plan, the app's URL is *temporary* - Back4app's dashboard literally says "URL is temporary and will be live for 60 minutes," and getting a permanent URL requires upgrading to a paid plan starting at $5/month. That makes the free tier unusable for this project's purpose (the client's `apiUrl()` is a fixed string baked into the compiled DLL, so a URL that changes every hour breaks license checks) - **use the Vercel option above instead unless you're paying for Back4app's Shared plan.**
+
+1. **Database - [supabase.com](https://supabase.com):** same as the Vercel steps above.
+2. **Hosting - [back4app.com](https://back4app.com):** create a free account (no card) → **Containers** → new app → **Deploy from GitHub**, pick this repo. Back4app finds the `Dockerfile` automatically and builds/runs it.
+3. In the app's **Settings → Environment Variables**, set:
+   ```
+   DATABASE_URL=<the Supabase connection string from step 1>
+   ADMIN_USER=admin
+   ADMIN_PASSWORD=<pick your own>
+   ```
+   (`PORT` doesn't need to be set - the Dockerfile exposes 3000 and `server.js` already falls back to that when `PORT` isn't provided.)
+4. Save, then trigger a deployment if one doesn't start automatically.
+5. If you upgrade for a permanent URL, update `Mario/Client/Managers/KeyAuthManager/KeyAuthClient.h`'s `apiUrl()` to `https://<that-url>/api/1.3/` (see below).
 
 ## Admin dashboard
 
